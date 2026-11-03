@@ -1,0 +1,1089 @@
+<meta charset="utf-8">
+<title>Kafka-Flusssimulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: Steuerleiste oben, darunter Kennzahlen, die Bühne (Canvas) und daneben die Erklärspalte; schmal untereinander */
+:root {
+  --bg: #EEF3F6; --panel: #FFFFFF; --fg: #14202A; --muted: #586A77; --line: #D3DDE4; --empty: #E3EAEF;
+  --teal: #1091C6; --green: #73A623; --yellow: #DDD900;
+  --bad: #CC3B25; --bad-soft: #FBE3DE; --good: #3F8A0E; --good-soft: #E5F2D6; --warn: #B87F00;
+  --ui: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", Consolas, "SFMono-Regular", monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E171E; --panel: #15212B; --fg: #E4ECF1; --muted: #93A6B4; --line: #2A3A47; --empty: #1F2D38;
+  --teal: #3AB0E2; --green: #8CC63F; --yellow: #E6E24A;
+  --bad: #FF6A52; --bad-soft: #3A1F1B; --good: #8CC63F; --good-soft: #1E3015; --warn: #E0A930; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0E171E; --panel: #15212B; --fg: #E4ECF1; --muted: #93A6B4; --line: #2A3A47; --empty: #1F2D38;
+  --teal: #3AB0E2; --green: #8CC63F; --yellow: #E6E24A;
+  --bad: #FF6A52; --bad-soft: #3A1F1B; --good: #8CC63F; --good-soft: #1E3015; --warn: #E0A930; color-scheme: dark }
+
+html, body { background: var(--bg); color: var(--fg); }
+[hidden] { display: none !important; }
+body { font-family: var(--ui); font-size: 15px; line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 14px 28px; }
+.wrap { max-width: 1500px; margin: 0 auto; display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; border-bottom: 3px solid var(--yellow); padding-bottom: 8px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 1.7rem; margin: 0; letter-spacing: .01em; }
+h1 span { color: var(--teal); }
+.untertitel { color: var(--muted); font-size: .92rem; }
+.stufen .trenner { width: 1px; background: var(--line); margin: 2px 6px; }
+
+.leiste { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.stufen { display: flex; flex-wrap: wrap; gap: 4px; }
+.stufen button { font-family: var(--display); font-weight: 600; font-size: .95rem; border: 1px solid var(--line); background: var(--panel);
+  color: var(--fg); padding: 6px 11px; border-radius: 4px; cursor: pointer; }
+.stufen button .nr { font-family: var(--mono); color: var(--muted); margin-right: 5px; }
+.stufen button[aria-pressed="true"] { background: var(--teal); border-color: var(--teal); color: #fff; }
+.stufen button[aria-pressed="true"] .nr { color: #fff; opacity: .8; }
+.modus { display: inline-flex; border: 2px solid var(--line); border-radius: 6px; overflow: hidden; }
+.modus button { font-family: var(--display); font-weight: 700; font-size: 1.02rem; letter-spacing: .04em; text-transform: uppercase;
+  padding: 6px 16px; border: 0; background: var(--panel); color: var(--muted); cursor: pointer; }
+.modus button[data-m="schlecht"][aria-pressed="true"] { background: var(--bad); color: #fff; }
+.modus button[data-m="gut"][aria-pressed="true"] { background: var(--good); color: #fff; }
+.knopf { font-family: var(--ui); font-weight: 500; font-size: .9rem; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  padding: 6px 11px; border-radius: 4px; cursor: pointer; }
+.knopf:hover, .stufen button:hover { border-color: var(--teal); }
+.knopf.aktion { border-color: var(--warn); }
+.knopf.aktion.an { background: var(--bad); border-color: var(--bad); color: #fff; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+.tempo { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .88rem; }
+.aktionen { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.schrittzahl { font-family: var(--mono); font-size: .9rem; color: var(--muted); min-width: 4.5em; text-align: center; }
+.knopf.weiter { background: var(--teal); border-color: var(--teal); color: #fff; font-weight: 600; }
+.knopf:disabled { opacity: .4; cursor: default; }
+#karte-achten.merke { border-left: 4px solid var(--yellow); }
+#karte-achten.merke .text { font-weight: 600; }
+
+.kennzahlen { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 8px; }
+.kz { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+.kz .l { font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.kz .w { font-family: var(--mono); font-weight: 600; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.kz.schlecht { border-left-color: var(--bad); background: var(--bad-soft); }
+.kz.gut { border-left-color: var(--good); }
+.kz.warn { border-left-color: var(--warn); }
+
+.haupt { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 12px; align-items: start; }
+@media (max-width: 1100px) { .haupt { grid-template-columns: minmax(0, 1fr); } }
+.buehne { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px; min-width: 0; }
+.buehne .rahmen { overflow-x: auto; }
+#sim { display: block; width: 100%; min-width: 760px; }
+.verlauf { display: flex; align-items: center; gap: 10px; margin-top: 8px; color: var(--muted); font-size: .8rem; }
+#spark { flex: 1; height: 54px; min-width: 0; }
+.legende { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: .8rem; color: var(--muted); }
+.legende i { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px; border-radius: 2px; }
+
+aside { display: grid; gap: 10px; min-width: 0; }
+.karte { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.karte h2 { font-family: var(--display); font-size: 1.15rem; margin: 0 0 4px; text-wrap: balance; }
+.karte h3 { font-size: .74rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 0 0 6px; }
+.frage { margin: 0; color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+th, td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.p { font-family: var(--mono); font-size: .8rem; word-break: break-word; }
+th.s, td.s { color: var(--bad); } th.g, td.g { color: var(--good); }
+td.aktiv, th.aktiv { background: var(--empty); font-weight: 600; }
+.text { margin: 0; }
+#protokoll { font-family: var(--mono); font-size: .78rem; display: grid; gap: 2px; max-height: 170px; overflow-y: auto; }
+#protokoll div { white-space: normal; }
+#protokoll .bad { color: var(--bad); } #protokoll .good { color: var(--good); } #protokoll .t { color: var(--muted); margin-right: 6px; }
+.tasten { font-size: .78rem; color: var(--muted); }
+kbd { font-family: var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; background: var(--panel); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Kafka-<span>Flusssimulator</span></h1>
+    <div class="untertitel">Producer → Broker → Consumer, in sechs Stufen. Jede Stufe einmal schlecht und einmal gut konfiguriert. Zeitraffer, vereinfachtes Modell.</div>
+  </header>
+
+  <div class="leiste">
+    <div class="stufen" id="stufen" role="group" aria-label="Stufe"></div>
+  </div>
+  <div class="leiste">
+    <div class="aktionen" id="schrittnav" hidden>
+      <button class="knopf" id="zurueck">◀ Zurück</button>
+      <span class="schrittzahl" id="schrittzahl"></span>
+      <button class="knopf weiter" id="weiter">Weiter ▶</button>
+    </div>
+    <div class="modus" id="modus" role="group" aria-label="Konfiguration">
+      <button id="m-schlecht" data-m="schlecht" aria-pressed="true">Schlecht</button>
+      <button id="m-gut" data-m="gut" aria-pressed="false">Gut</button>
+    </div>
+    <button class="knopf" id="pause">⏸ Pause</button>
+    <button class="knopf" id="neu">↺ Neu starten</button>
+    <label class="tempo" for="tempo">Tempo <input type="range" id="tempo" min="0" max="5" step="1" value="2"> <span id="tempo-w">0,5×</span></label>
+    <div class="aktionen" id="aktionen"></div>
+  </div>
+
+  <div class="kennzahlen" id="kennzahlen"></div>
+
+  <div class="haupt">
+    <div class="buehne">
+      <div class="rahmen"><canvas id="sim" height="300"></canvas></div>
+      <div class="verlauf"><span>Lag, letzte 2 min</span><canvas id="spark"></canvas><span id="spark-max"></span></div>
+      <div class="legende" id="legende"></div>
+    </div>
+    <aside>
+      <div class="karte"><h2 id="titel"></h2><p class="frage" id="frage"></p></div>
+      <div class="karte" id="karte-konfig"><h3>Konfiguration</h3><table id="konfig"></table></div>
+      <div class="karte"><h3 id="h-sieht">Was du siehst</h3><p class="text" id="sieht"></p></div>
+      <div class="karte" id="karte-achten"><h3 id="h-achten">Im Betrieb beobachten</h3><p class="text" id="achten"></p></div>
+      <div class="karte"><h3>Ereignisse</h3><div id="protokoll"></div></div>
+      <div class="tasten"><kbd>0</kbd> Prinzip · <kbd>←</kbd>/<kbd>→</kbd> Schritt · <kbd>1</kbd>–<kbd>6</kbd> Stufe · <kbd>S</kbd>/<kbd>G</kbd> schlecht/gut · <kbd>Leertaste</kbd> Pause · <kbd>R</kbd> neu starten</div>
+    </aside>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- Hilfen
+const $ = s => document.querySelector(s);
+const KEYFARBEN = ['#1091C6', '#73A623', '#E07B39', '#8E5CC4', '#C2A400', '#D2467A', '#2BA79A', '#5B6FD6', '#9A6B3F', '#4C9F70'];
+let farben = {};
+function leseFarben() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['bg', 'panel', 'fg', 'muted', 'line', 'empty', 'teal', 'green', 'yellow', 'bad', 'good', 'warn', 'ui', 'mono', 'display'])
+    farben[k] = cs.getPropertyValue('--' + k).trim();
+}
+function hash(s) { let h = 7; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
+const zufall = n => Math.floor(Math.random() * n);
+const fmtRate = r => fmt(r, r < 10 ? 1 : 0);
+const fmt = (x, d = 0) => x.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// ---------------------------------------------------------------- Prinzip (Schritt für Schritt)
+const fuenfVertraege = () => 'V-' + (1001 + zufall(5));
+function prinzipBasis(parts, consumers, rateProS, proc) {
+  basis({ parts, consumers, cc: { proc, pollMax: 1 } });
+  S.gross = true;
+  S.rate = () => rateProS;
+  S.key = fuenfVertraege;
+}
+const SENDEN = { id: 'senden', text: '✉ Nachricht senden', tun() { senden(S.key()); } };
+const CONSUMER_PLUS = { id: 'plus', text: '+ Consumer', tun() { if (S.consumers.length < 7) { S.consumers.push(neuerConsumer('C' + (S.consumers.length + 1))); protokoll('C' + S.consumers.length + ' tritt der Gruppe bei'); rebalance(); } } };
+const CONSUMER_MINUS = { id: 'minus', text: '− Consumer', tun() { const c = S.consumers.filter(c => c.joined).pop(); if (c && S.consumers.filter(c => c.joined).length > 1) { verlassen(c); S.consumers.splice(S.consumers.indexOf(c), 1); protokoll(c.name + ' verlässt die Gruppe sauber'); rebalance(); } } };
+const BROKER_AKTIONEN = [0, 1, 2].map(b => ({
+  id: 'b' + b, text: 'B' + (b + 1) + ' ausfallen', klasse: 'aktion',
+  an: () => S.broker && !S.broker[b].alive, textAn: 'B' + (b + 1) + ' starten',
+  tun() { S.broker[b].alive ? brokerAus(b) : brokerAn(b); },
+}));
+function replikationAufbauen(acks, minIsr) {
+  S.repl = true; S.acks = acks; S.minIsr = minIsr;
+  S.broker = [0, 1, 2].map(b => ({ id: b, alive: true }));
+  S.parts.forEach((p, i) => { p.leader = i % 3; p.reps = [0, 1, 2].map(() => ({ leo: 0, caughtUp: true })); });
+  S.retry = [];
+}
+
+const PRINZIP = {
+  kurz: 'Prinzip', prinzip: true, kennzahlen: ['prod', 'verb', 'lag'],
+  schritte: [
+    {
+      titel: 'Der Producer schickt eine Nachricht',
+      lead: 'Ein Vertrag ändert sich. Die Anwendung meldet das als Nachricht an Kafka.',
+      text: 'Eine Nachricht besteht aus Schlüssel (hier die Vertragsnummer), Wert (die Änderung) und Zeitstempel. Der Producer schickt sie an einen Broker. Der Broker hängt sie an das Ende einer Partition des Topics. Klicke auf „Nachricht senden“ und verfolge den Punkt.',
+      merke: 'Kafka speichert Nachrichten in Topics. Ein Topic besteht aus Partitionen.',
+      init() { prinzipBasis(1, 0, 0, 1000); for (let k = 0; k < 2; k++) anhaengen(S.parts[0], { key: S.key() }, false); },
+      aktionen: [SENDEN],
+    },
+    {
+      titel: 'Das Log: anhängen, nummerieren, behalten',
+      lead: 'Was passiert mit den Nachrichten im Broker?',
+      text: 'Jede neue Nachricht kommt ans Ende der Partition und bekommt die nächste Nummer, den Offset. Nichts wird überschrieben oder umsortiert. Die Nachrichten bleiben liegen, bis die Retention sie löscht (Zeit oder Größe), egal ob sie jemand gelesen hat. Neue Nachrichten erscheinen hier links, ältere wandern nach rechts.',
+      merke: 'Eine Partition ist ein Log: nur anhängen, fortlaufend nummeriert, unveränderlich.',
+      init() { prinzipBasis(1, 0, 1.0, 1000); },
+      aktionen: [SENDEN],
+    },
+    {
+      titel: 'Der Consumer liest ab seinem Offset',
+      lead: 'Eine zweite Anwendung, die Bestandsverwaltung, will die Änderungen verarbeiten.',
+      text: 'Der Consumer fragt den Broker regelmäßig: „Gib mir alles ab Offset x“ (poll). Kafka schiebt nichts aktiv zu, der Consumer holt (Pull). Er verarbeitet eine Nachricht nach der anderen in Offset-Reihenfolge. Gelesene Nachrichten bleiben im Log (blass) und können von anderen Anwendungen ebenfalls gelesen werden.',
+      merke: 'Consumer holen sich die Daten selbst. Lesen löscht nichts.',
+      init() { prinzipBasis(1, 1, 0.6, 1200); },
+    },
+    {
+      titel: 'Commit: das Lesezeichen',
+      lead: 'Woher weiß der Consumer nach einem Neustart, wo er weitermachen muss?',
+      text: 'Nach der Verarbeitung meldet der Consumer seinen Fortschritt an Kafka (Commit). Kafka speichert den Offset pro Consumer Group und Partition im internen Topic __consumer_offsets; das Dreieck zeigt ihn. Halte C1 an und starte ihn wieder: Er macht genau beim committeten Offset weiter. Die Einträge „committet“ stehen im Ereignisprotokoll.',
+      merke: 'Der committete Offset ist das Lesezeichen der Consumer Group.',
+      init() { prinzipBasis(1, 1, 0.6, 1200); S.sessionMs = 800; },
+      aktionen: [{ id: 'c1', text: '⏸ C1 anhalten', klasse: 'aktion', an: () => S.consumers[0] && !S.consumers[0].alive, textAn: '▶ C1 starten',
+        tun() { const c = S.consumers[0]; c.alive ? absturz(c) : neustart(c); } }],
+    },
+    {
+      titel: 'Lag: der Abstand',
+      lead: 'Jetzt kommen mehr Änderungen, als die Bestandsverwaltung schafft.',
+      text: 'Lag = letzter Offset im Log minus committeter Offset. Ist der Producer schneller als der Consumer, wächst der Lag. Das ist zunächst kein Fehler: Kafka puffert, und der Consumer holt später auf. Gefährlich wird es erst, wenn der Lag dauerhaft wächst oder die ältesten Nachrichten an die Retention stoßen (Stufe 1).',
+      merke: 'Der Lag ist die wichtigste Betriebskennzahl eines Consumers.',
+      init() { prinzipBasis(1, 1, 1.6, 1000); },
+    },
+    {
+      titel: 'Mehrere Partitionen und der Schlüssel',
+      lead: 'Ein Topic hat meist mehrere Partitionen. Welche Nachricht landet wo?',
+      text: 'Der Producer rechnet: hash(Schlüssel) mod Anzahl Partitionen. Der gleiche Vertrag landet deshalb immer in derselben Partition, achte auf die Farben. Innerhalb einer Partition ist die Reihenfolge garantiert, über Partitionen hinweg nicht. Jede Partition hat ihre eigenen Offsets, die jeweils bei 0 beginnen.',
+      merke: 'Gleicher Schlüssel, gleiche Partition, gleiche Reihenfolge.',
+      init() { prinzipBasis(3, 1, 1.6, 300); S.zeigeHash = true; },
+      aktionen: [SENDEN],
+    },
+    {
+      titel: 'Consumer Group: Arbeit teilen',
+      lead: 'Ein Consumer allein schafft die Last nicht. Wie skaliert man?',
+      text: 'Consumer mit derselben group.id bilden eine Gruppe und teilen sich die Partitionen. Jede Partition gehört genau einem Consumer der Gruppe, so bleibt die Reihenfolge erhalten. Füge Consumer hinzu und beobachte die Neuverteilung (Rebalance). Ab dem vierten Consumer bleibt einer ohne Partition: Mehr Parallelität als Partitionen gibt es nicht.',
+      merke: 'Maximale Parallelität einer Gruppe = Anzahl der Partitionen.',
+      init() { prinzipBasis(3, 1, 3, 800); },
+      aktionen: [CONSUMER_PLUS, CONSUMER_MINUS],
+    },
+    {
+      titel: 'Replikation: jede Partition dreimal',
+      lead: 'Was, wenn ein Broker ausfällt?',
+      text: 'Jede Partition liegt auf drei Brokern. Einer ist Leader (★): Producer schreiben und Consumer lesen dort. Die Follower kopieren vom Leader, gestrichelt heißt „fehlt noch“. Hohl heißt „noch nicht bestätigt“: Mit acks=all bestätigt Kafka erst, wenn alle Replikate im ISR die Nachricht haben. Consumer lesen nur bis zur High Watermark (gestrichelte Linie). Lass den Leader ausfallen: Ein Follower übernimmt.',
+      merke: 'Replikation schützt vor Broker-Ausfällen. Was dabei schiefgehen kann, zeigt Stufe 4.',
+      init() { prinzipBasis(1, 1, 1.2, 400); replikationAufbauen('all', 2); S.replDelay = 1500; },
+      aktionen: BROKER_AKTIONEN,
+    },
+  ],
+};
+
+// ---------------------------------------------------------------- Stufen
+// Zeitraffer: Alle Zeiten sind Simulationszeit. Die Werte in der Tabelle sind die echten Einstellungen.
+const STUFEN = [
+  PRINZIP,
+  {
+    kurz: 'Puffer', titel: 'Kafka als Puffer',
+    frage: 'Im Peak kommen 18 Änderungen pro Sekunde, der Consumer schafft 10. Kafka puffert den Überschuss – aber wie lange?',
+    konfig: [
+      ['retention.ms', '10000 (10 s)', '604800000 (7 Tage)'],
+      ['Partitionen / Consumer', '1 / 1', '1 / 1'],
+      ['Consumer-Leistung', '10 Nachr./s', '10 Nachr./s'],
+      ['Last', 'Peak 18/s für 20 s, sonst 3/s', 'gleich'],
+    ],
+    sieht: {
+      schlecht: 'Im Peak läuft der Lag auf. Die ältesten ungelesenen Nachrichten werden älter als die Retention und der Broker löscht sie, bevor der Consumer sie erreicht (rot). Kafka meldet dabei keinen Fehler: Der Consumer springt mit auto.offset.reset einfach an den neuen Anfang.',
+      gut: 'Der Lag läuft im Peak genauso auf, wird danach aber vollständig abgebaut. Nichts geht verloren. Genau dafür ist Kafka da: Producer und Consumer müssen nicht gleich schnell sein.',
+    },
+    achten: 'records-lag-max zeigt nur die Anzahl. Entscheidend ist das Alter der ältesten offenen Nachricht im Vergleich zu retention.ms. Im Lab: Alert ConsumerLagHigh und kafka-consumer-groups.sh --describe.',
+    kennzahlen: ['prod', 'verb', 'lag', 'alter', 'verloren'],
+    init(m) {
+      basis({ parts: 1, consumers: 1, cc: { proc: 100, pollMax: 1 } });
+      S.retention = m === 'schlecht' ? 10000 : Infinity;
+      S.rate = t => { const ph = t % 60000; return ph >= 5000 && ph < 25000 ? 18 : 3; };
+      S.key = () => 'V-' + (1000 + zufall(40));
+    },
+  },
+  {
+    kurz: 'Batching', titel: 'Producer: viele kleine oder wenige große Requests',
+    frage: 'Der Producer schickt 80 Nachrichten pro Sekunde. Jeder Request kostet den Broker eine feste Grundlast. Wie packt der Producer die Nachrichten?',
+    konfig: [
+      ['linger.ms', '0', '100'],
+      ['batch.size', '1024 (≈ 2 Nachr.)', '65536'],
+      ['compression.type', 'none', 'lz4'],
+      ['buffer.memory', '≈ 200 Nachr.', '≈ 200 Nachr.'],
+    ],
+    sieht: {
+      schlecht: 'Jede Nachricht geht sofort als eigener Request los: ein Strom winziger Pakete. Die Request-Queue des Brokers läuft voll, der Puffer im Producer füllt sich, und sobald er voll ist, blockiert send() und die Anwendung bekommt Timeouts.',
+      gut: 'Der Producer wartet bis zu 100 ms und packt pro Partition mehrere Nachrichten in einen komprimierten Batch. Weniger, dickere Pakete, der Broker hat Luft. Der Preis: bis zu 100 ms mehr Latenz pro Nachricht.',
+    },
+    achten: 'Producer: request-rate, batch-size-avg, buffer-available-bytes, record-error-rate. Broker: RequestQueueSize und RequestHandlerAvgIdlePercent. In der Simulation verarbeitet der Broker die Requests nacheinander; das ist vereinfacht.',
+    kennzahlen: ['prod', 'requests', 'proRequest', 'queue', 'puffer', 'fehler'],
+    init(m) {
+      basis({ parts: 3, consumers: 1, cc: { proc: 4, pollMax: 50 } });
+      S.batching = m === 'schlecht'
+        ? { linger: 0, batchMax: 2, perMsg: 4, overhead: 15 }
+        : { linger: 100, batchMax: 100, perMsg: 1.5, overhead: 15 };
+      S.batches = S.parts.map(() => ({ msgs: [], first: 0 }));
+      S.rq = []; S.rqCur = null; S.puffer = 0; S.pufferMax = 200;
+      S.rate = t => 80;
+      S.key = () => 'V-' + (1000 + zufall(300));
+    },
+  },
+  {
+    kurz: 'Partitionen', titel: 'Partitionen, Schlüssel und Consumer Group',
+    frage: '24 Änderungen pro Sekunde, jeder Consumer schafft 10. Wie verteilt sich die Arbeit?',
+    konfig: [
+      ['Partitionen', '2', '6'],
+      ['Consumer in der Gruppe', '4', '3'],
+      ['Schlüssel (Key)', 'Sparte (KFZ 70 %)', 'Vertragsnummer'],
+      ['Consumer-Leistung', '10 Nachr./s', '10 Nachr./s'],
+    ],
+    sieht: {
+      schlecht: 'Zwei Partitionen, vier Consumer: Zwei Consumer haben nichts zu tun, denn eine Partition gehört immer genau einem Consumer der Gruppe. Dazu landet die ganze Sparte KFZ auf einer Partition. Deren Consumer läuft dauerhaft hinterher, obwohl insgesamt genug Leistung da wäre.',
+      gut: 'Sechs Partitionen, drei Consumer, je zwei Partitionen pro Consumer. Die Vertragsnummer als Schlüssel verteilt gleichmäßig und hält trotzdem die Reihenfolge pro Vertrag. Mit „+ Consumer“ und „− Consumer“ siehst du die Neuverteilung (Rebalance).',
+    },
+    achten: 'Lag pro Partition statt nur Summe (kafka-consumer-groups.sh --describe). Ein Consumer ohne Partitionen ist kein Fehler, aber verschwendete Leistung. Partitionen lassen sich erhöhen, aber das ändert die Zuordnung der Schlüssel.',
+    kennzahlen: ['prod', 'verb', 'lag', 'leer', 'rebalances'],
+    init(m) {
+      const s = m === 'schlecht';
+      basis({ parts: s ? 2 : 6, consumers: s ? 4 : 3, cc: { proc: 100, pollMax: 5 } });
+      S.rate = t => 24;
+      S.key = s
+        ? () => { const r = Math.random(); return r < 0.7 ? 'KFZ' : r < 0.9 ? 'Leben' : 'Haftpflicht'; }
+        : () => 'V-' + (1000 + zufall(200));
+      S.partitioniere = s ? k => ({ KFZ: 0, Leben: 1, Haftpflicht: 1 })[k] : null;
+    },
+    aktionen: [CONSUMER_PLUS, CONSUMER_MINUS],
+  },
+  {
+    kurz: 'Replikation', titel: 'Replikation, acks und Broker-Ausfall',
+    frage: 'Drei Broker, jede Partition liegt dreimal vor. Wann gilt eine Nachricht als sicher, und was passiert, wenn der Leader ausfällt?',
+    konfig: [
+      ['acks', '1', 'all'],
+      ['min.insync.replicas', '1', '2'],
+      ['replication.factor', '3', '3'],
+      ['enable.idempotence', 'false', 'true'],
+    ],
+    sieht: {
+      schlecht: 'Der Leader bestätigt sofort, die Follower holen die Daten etwas später (gestrichelte Lücke). Lass einen Leader ausfallen: Der neue Leader hat die letzten Nachrichten noch nicht, der Producer hält sie aber für gespeichert. Sie sind weg, und zwar bestätigt.',
+      gut: 'Bestätigt wird erst, wenn alle Replikate im ISR die Nachricht haben (hohl = noch nicht bestätigt). Fällt der Leader aus, wiederholt der Producer nur Unbestätigtes; dank Idempotenz ohne Duplikate. Fallen zwei Broker aus, lehnt Kafka Schreibzugriffe ab (NotEnoughReplicas): Lieber nicht verfügbar als Daten verlieren.',
+    },
+    achten: 'UnderReplicatedPartitions, UnderMinIsrPartitionCount, OfflinePartitionsCount (Alerts im Lab). Producer: record-error-rate und record-retry-rate. Consumer lesen nur bis zur High Watermark (gestrichelte Linie).',
+    kennzahlen: ['prod', 'lag', 'verloren', 'retries', 'fehler', 'unterMinIsr'],
+    init(m) {
+      basis({ parts: 3, consumers: 1, cc: { proc: 15, pollMax: 10 } });
+      replikationAufbauen(m === 'schlecht' ? '1' : 'all', m === 'schlecht' ? 1 : 2);
+      S.rate = t => 15;
+      S.key = () => 'V-' + (1000 + zufall(200));
+    },
+    aktionen: BROKER_AKTIONEN,
+  },
+  {
+    kurz: 'Commit', titel: 'Offset-Commit und Consumer-Absturz',
+    frage: 'Ein Consumer stürzt hart ab. Was wurde schon committet, was schon verarbeitet?',
+    konfig: [
+      ['enable.auto.commit', 'true', 'false'],
+      ['Verarbeitung', 'asynchron (Thread-Pool)', 'im Poll-Thread'],
+      ['Commit', 'beim Poll, vor der Verarbeitung', 'nach der Verarbeitung (AckMode BATCH)'],
+      ['Idempotenz im Consumer', 'nein', 'ja (Versionsnummer)'],
+      ['session.timeout.ms', '45000', '45000'],
+    ],
+    sieht: {
+      schlecht: 'Der Consumer holt Nachrichten auf Vorrat und committet sie sofort, verarbeitet aber erst später. Lass C1 abstürzen: Nach dem Session-Timeout übernimmt C2 ab dem committeten Offset. Was C1 auf Vorrat hatte, wird nie verarbeitet (rot). Kein Fehler im Log.',
+      gut: 'Committet wird erst nach der Verarbeitung. Nach dem Absturz verarbeitet C2 einige Nachrichten ein zweites Mal (at-least-once). Die Versionsnummer erkennt diese Duplikate und überspringt sie. Nichts geht verloren. Das ist die Szene „Absturz“ aus der bestand-demo.',
+    },
+    achten: 'Während des Session-Timeouts steht die Partition still, der Lag wächst; erst danach übernimmt der andere Consumer. Beobachten: records-lag-max pro Partition, Rebalances der Gruppe. Verlust durch Auto-Commit sieht man nur fachlich, nicht in den Metriken.',
+    kennzahlen: ['prod', 'verb', 'lag', 'verloren', 'duplikate'],
+    init(m) {
+      const s = m === 'schlecht';
+      basis({ parts: 4, consumers: 2, cc: { proc: 50, pollMax: s ? 30 : 10, commit: s ? 'auto' : 'nach' } });
+      S.sessionMs = 6000;
+      S.rate = t => 28;
+      S.key = () => 'V-' + (1000 + zufall(200));
+    },
+    aktionen: [{
+      id: 'c1', text: 'C1 abstürzen', klasse: 'aktion', an: () => S.consumers && !S.consumers[0].alive, textAn: 'C1 neu starten',
+      tun() { const c = S.consumers[0]; c.alive ? absturz(c) : neustart(c); },
+    }],
+  },
+  {
+    kurz: 'Poll-Intervall', titel: 'max.poll.records und der Rebalance-Sturm',
+    frage: 'Nach einer Wartung liegen 1200 Nachrichten an. Jede braucht 1 s Verarbeitung. Wie viele holt der Consumer pro Poll?',
+    konfig: [
+      ['max.poll.records', '500', '50'],
+      ['max.poll.interval.ms', '300000 (5 min)', '300000 (5 min)'],
+      ['Verarbeitung', '≈ 1 s pro Nachricht', '≈ 1 s pro Nachricht'],
+      ['Zeit pro Poll', '≈ 500 s > 300 s', '≈ 50 s < 300 s'],
+    ],
+    sieht: {
+      schlecht: 'Ein Poll dauert länger als max.poll.interval.ms. Der Consumer fliegt aus der Gruppe, bevor er committen kann, seine Partitionen wandern zum anderen und alles beginnt von vorn. Der Lag sinkt kaum, die Duplikate steigen, und die Gruppe kommt nicht zur Ruhe.',
+      gut: 'Kleinere Polls: Jeder Poll ist weit unter dem Limit fertig und wird committet. Der Rückstand wird gleichmäßig abgebaut, keine Rebalances.',
+    },
+    achten: 'Rebalance-Rate der Gruppe, Consumer-Log „consumer poll timeout has expired“, last-poll-seconds-ago, time-between-poll-max. Der Balken im Consumer zeigt, wie viel vom Poll-Intervall verbraucht ist.',
+    kennzahlen: ['verb', 'lag', 'duplikate', 'rebalances'],
+    init(m) {
+      basis({ parts: 4, consumers: 2, cc: { proc: 20, pollMax: m === 'schlecht' ? 500 : 50, maxPoll: 6000 } });
+      S.rebalanceMs = 800;
+      S.rate = t => 6;
+      S.key = () => 'V-' + (1000 + zufall(200));
+      for (let i = 0; i < 1200; i++) anhaengen(S.parts[i % 4], { key: S.key(), t: 0 }, false);
+      S.m.produziert = 0;
+    },
+  },
+];
+
+// ---------------------------------------------------------------- Zustand
+let S, stufe = 0, schrittNr = 0, modus = 'schlecht', laeuft = true, tempo = 0.5;
+const TEMPI = [0.1, 0.25, 0.5, 1, 2, 4];
+// aktuelle Definition: Stufe oder der gewählte Schritt des Prinzip-Teils
+function def() { const s = STUFEN[stufe]; return s.prinzip ? Object.assign({}, s, s.schritte[schrittNr]) : s; }
+
+function neuerConsumer(name) {
+  return { name, alive: true, joined: true, assigned: [], batch: [], cur: null, curEnd: 0, pollT: 0, pauseUntil: 0,
+    rejoinAt: 0, deadAt: 0, verarbeitet: {}, zuletzt: null };
+}
+function basis({ parts, consumers, cc }) {
+  S = {
+    t: 0, acc: 0, cc: Object.assign({ commit: 'nach', maxPoll: 0 }, cc),
+    parts: Array.from({ length: parts }, (_, i) => ({ i, entries: [], start: 0, fetch: 0, committed: 0, owner: null, leader: 0, flash: null })),
+    consumers: Array.from({ length: consumers }, (_, i) => neuerConsumer('C' + (i + 1))),
+    m: { produziert: 0, verarbeitet: 0, verloren: 0, duplikate: 0, fehler: 0, retries: 0, rebalances: 0, requests: 0, reqMsgs: 0 },
+    pakete: [], hist: [], lagHist: [], rebalanceMs: 1500, sessionMs: 6000, retention: Infinity, nextHist: 0, protokoll: [],
+  };
+}
+function leo(p) { return p.entries.length; }
+function lesbarBis(p) {
+  if (!S.repl) return leo(p);
+  if (p.leader < 0) return p.fetch;
+  return hw(p);
+}
+
+// ---------------------------------------------------------------- Producer
+function partitionFuer(key) { return S.partitioniere ? S.partitioniere(key) : hash(key) % S.parts.length; }
+
+function anhaengen(p, msg, paket = true) {
+  const e = { off: leo(p), key: msg.key, farbe: KEYFARBEN[hash(msg.key) % KEYFARBEN.length], t: msg.t ?? S.t, done: 0, acked: !S.repl || S.acks === '1' };
+  if (S.gross && paket) e.sichtbarAb = S.t + 600;
+  p.entries.push(e);
+  S.m.produziert++;
+  if (S.repl) p.reps[p.leader].leo = leo(p);
+  if (paket) paket_('prod', p.i, null, e.farbe, 1, S.gross ? 600 : 260);
+  return e;
+}
+
+function senden(key) {
+  const p = S.parts[partitionFuer(key)];
+  S.letzte = { key, p: p.i };
+  if (S.batching) {
+    if (S.puffer >= S.pufferMax) { S.m.fehler++; if (S.m.fehler % 40 === 1) protokoll('Puffer voll: send() blockiert → TimeoutException', 'bad'); return; }
+    const b = S.batches[p.i];
+    if (!b.msgs.length) b.first = S.t;
+    b.msgs.push({ key, t: S.t }); S.puffer++;
+    return;
+  }
+  if (S.repl) return sendenRepl(p, key);
+  anhaengen(p, { key });
+}
+
+function sendenRepl(p, key) {
+  if (p.leader < 0) { S.m.fehler++; S.retry.push({ key, at: S.t + 500 }); return; }
+  const isr = isrVon(p);
+  if (S.acks === 'all' && isr.length < S.minIsr) {
+    S.m.fehler++; S.retry.push({ key, at: S.t + 500 });
+    if (!p.nerWarn || S.t - p.nerWarn > 4000) { p.nerWarn = S.t; protokoll('P' + p.i + ': NotEnoughReplicas – nur ' + isr.length + ' von min. ' + S.minIsr + ' Replikaten im ISR, Producer wiederholt', 'bad'); }
+    return;
+  }
+  anhaengen(p, { key });
+}
+
+function producerSchritt(dt) {
+  S.acc += S.rate(S.t) * dt / 1000;
+  while (S.acc >= 1) { S.acc -= 1; senden(S.key()); }
+  if (S.retry) {
+    const faellig = S.retry.filter(r => r.at <= S.t);
+    if (faellig.length) { S.retry = S.retry.filter(r => r.at > S.t); for (const r of faellig) { S.m.retries++; sendenRepl(S.parts[partitionFuer(r.key)], r.key); } }
+  }
+  if (S.batching) batchingSchritt();
+}
+
+function batchingSchritt() {
+  const B = S.batching;
+  // fertige Batches als Request losschicken
+  S.batches.forEach((b, i) => {
+    while (b.msgs.length && (b.msgs.length >= B.batchMax || S.t - b.first >= B.linger)) {
+      const msgs = b.msgs.splice(0, B.batchMax);
+      if (b.msgs.length) b.first = b.msgs[0].t;
+      S.rq.push({ p: i, msgs, kosten: B.overhead + B.perMsg * msgs.length, ankunft: S.t + 120 });
+      S.m.requests++; S.m.reqMsgs += msgs.length;
+      paket_('prod-rq', i, null, farben.teal, msgs.length, 120);
+    }
+  });
+  // Broker arbeitet Requests nacheinander ab
+  if (S.rqCur && S.t >= S.rqCur.ende) {
+    const r = S.rqCur; S.rqCur = null;
+    for (const m of r.msgs) anhaengen(S.parts[r.p], { key: m.key }, false);
+    paket_('rq-tape', r.p, null, farben.teal, r.msgs.length, 120);
+    S.puffer -= r.msgs.length;
+  }
+  if (!S.rqCur && S.rq.length && S.rq[0].ankunft <= S.t) { S.rqCur = S.rq.shift(); S.rqCur.ende = S.t + S.rqCur.kosten; }
+}
+
+// ---------------------------------------------------------------- Replikation
+function isrVon(p) { return p.reps.map((r, b) => b).filter(b => S.broker[b].alive && p.reps[b].caughtUp); }
+function hw(p) { const isr = isrVon(p); return isr.length ? Math.min(...isr.map(b => p.reps[b].leo)) : 0; }
+
+function replikationSchritt() {
+  const grenze = S.t - (S.replDelay || 600);
+  for (const p of S.parts) {
+    if (p.leader < 0) continue;
+    p.reps[p.leader].leo = leo(p); p.reps[p.leader].caughtUp = true;
+    p.reps.forEach((r, b) => {
+      if (b === p.leader || !S.broker[b].alive) return;
+      let n = 0;
+      while (r.leo < leo(p) && p.entries[r.leo].t <= grenze && n < 6) { r.leo++; n++; }
+      if (n < 6 && !r.caughtUp) { r.caughtUp = true; protokoll('P' + p.i + ': B' + (b + 1) + ' ist wieder im ISR', 'good'); }
+    });
+    if (S.acks === 'all') { const h = hw(p); for (let o = p.ackPtr || 0; o < h; o++) p.entries[o].acked = true; p.ackPtr = h; }
+  }
+}
+
+function waehleLeader(p, ohne) {
+  const kand = [1, 2, 0].map(d => (p.leader + d) % 3).filter(b => b !== ohne && S.broker[b].alive && p.reps[b].caughtUp);
+  return kand.length ? kand[0] : -1;
+}
+function kuerzen(p, neuLeo) {
+  const weg = p.entries.splice(neuLeo);
+  let verloren = 0, wiederholt = 0;
+  for (const e of weg) {
+    if (e.acked) { verloren++; } else { wiederholt++; S.retry.push({ key: e.key, at: S.t + 300 }); }
+  }
+  S.m.verloren += verloren; S.m.produziert -= weg.length;
+  p.ackPtr = Math.min(p.ackPtr || 0, neuLeo);
+  p.reps.forEach(r => { r.leo = Math.min(r.leo, neuLeo); });
+  p.fetch = Math.min(p.fetch, neuLeo); p.committed = Math.min(p.committed, neuLeo);
+  if (verloren) { p.flash = { text: '−' + verloren + ' bestätigt, aber verloren', bis: S.t + 6000, bad: true }; protokoll('P' + p.i + ': ' + verloren + ' bestätigte Nachrichten verloren (neuer Leader hatte sie nicht)', 'bad'); }
+  if (wiederholt) protokoll('P' + p.i + ': ' + wiederholt + ' unbestätigte Nachrichten werden vom Producer wiederholt', 'good');
+}
+function brokerAus(b) {
+  S.broker[b].alive = false;
+  protokoll('B' + (b + 1) + ' fällt aus', 'bad');
+  for (const p of S.parts) {
+    p.reps[b].caughtUp = false;
+    if (p.leader !== b) continue;
+    const nl = waehleLeader(p, b);
+    if (nl < 0) { p.leader = -1; protokoll('P' + p.i + ': kein Replikat im ISR – Partition offline', 'bad'); continue; }
+    protokoll('P' + p.i + ': B' + (nl + 1) + ' wird Leader');
+    p.leader = nl;
+    if (p.reps[nl].leo < leo(p)) kuerzen(p, p.reps[nl].leo);
+  }
+}
+function brokerAn(b) {
+  S.broker[b].alive = true;
+  protokoll('B' + (b + 1) + ' startet und holt auf', 'good');
+  for (const p of S.parts) {
+    p.reps[b].caughtUp = false;
+    if (p.leader < 0) { p.leader = b; p.reps[b].caughtUp = true; protokoll('P' + p.i + ': B' + (b + 1) + ' wird Leader, Partition wieder online', 'good'); if (p.reps[b].leo < leo(p)) kuerzen(p, p.reps[b].leo); }
+    else p.reps[b].leo = Math.min(p.reps[b].leo, leo(p));
+  }
+}
+
+// ---------------------------------------------------------------- Consumer
+function zuweisen() {
+  const aktiv = S.consumers.filter(c => c.alive && c.joined);
+  const vorher = S.parts.map(p => p.owner);
+  S.consumers.forEach(c => c.assigned = []);
+  S.parts.forEach((p, i) => { const c = aktiv.length ? aktiv[i % aktiv.length] : null; p.owner = c; if (c) c.assigned.push(i); });
+  return S.parts.filter((p, i) => p.owner !== vorher[i]);
+}
+function commitVerarbeitet(c) {
+  for (const [i, off] of Object.entries(c.verarbeitet)) {
+    const p = S.parts[i];
+    if (S.gross && off > p.committed) protokoll(c.name + ' committet P' + i + ': weiter ab Offset ' + off, 'good');
+    p.committed = Math.max(p.committed, off);
+  }
+  c.verarbeitet = {};
+}
+function rebalance() {
+  S.m.rebalances++;
+  // Wer bleibt, committet vor der Abgabe (Spring: Commit beim Revoke)
+  for (const c of S.consumers) if (c.alive && c.joined && S.cc.commit === 'nach') commitVerarbeitet(c);
+  const geaendert = zuweisen();
+  for (const p of geaendert) {
+    p.fetch = Math.max(p.committed, p.start);
+    // Was committet, aber nie verarbeitet wurde, ist jetzt verloren
+    let n = 0;
+    for (let o = p.start; o < p.committed; o++) { const e = p.entries[o]; if (e && !e.done && !e.lost) { e.lost = true; n++; } }
+    if (n) { S.m.verloren += n; p.flash = { text: '−' + n + ' nie verarbeitet', bis: S.t + 6000, bad: true }; protokoll('P' + p.i + ': ' + n + ' Nachrichten committet, aber nie verarbeitet – verloren', 'bad'); }
+  }
+  for (const c of S.consumers) {
+    if (!c.alive || !c.joined) continue;
+    const vorher = c.batch.length + (c.cur ? 1 : 0);
+    // Auto-Commit + Thread-Pool: der Vorrat wird weiterverarbeitet, auch wenn die Partition wandert
+    if (S.cc.commit === 'nach') {
+      c.batch = c.batch.filter(r => S.parts[r.p].owner === c);
+      if (c.cur && S.parts[c.cur.p].owner !== c) c.cur = null;
+    }
+    if (geaendert.some(p => p.owner === c) || vorher !== c.batch.length + (c.cur ? 1 : 0)) {
+      c.pauseUntil = S.t + S.rebalanceMs; c.pollT += S.rebalanceMs;
+    }
+  }
+  protokoll('Rebalance: ' + S.consumers.filter(c => c.alive && c.joined).map(c => c.name + '→' + (c.assigned.length ? c.assigned.map(i => 'P' + i).join(',') : 'nichts')).join('  '));
+}
+function verlassen(c) { if (S.cc.commit === 'nach') commitVerarbeitet(c); c.joined = false; c.batch = []; c.cur = null; }
+function absturz(c) {
+  c.alive = false; c.deadAt = S.t; c.batch = []; c.cur = null; c.verarbeitet = {};
+  protokoll(c.name + ' stürzt ab – der Broker merkt es erst nach session.timeout.ms', 'bad');
+}
+function neustart(c) { c.alive = true; c.joined = false; c.rejoinAt = S.t + 600; protokoll(c.name + ' startet neu'); }
+function rauswurf(c) {
+  c.joined = false; c.batch = []; c.cur = null; c.verarbeitet = {}; c.rejoinAt = S.t + 1000;
+  protokoll(c.name + ': max.poll.interval.ms überschritten – verlässt die Gruppe ohne Commit', 'bad');
+  rebalance();
+}
+
+function poll(c) {
+  const cc = S.cc; let n = cc.pollMax - c.batch.length; let neu = 0;
+  const parts = c.assigned.map(i => S.parts[i]);
+  let weiter = true;
+  while (n > 0 && weiter) {
+    weiter = false;
+    for (const p of parts) {
+      if (n <= 0) break;
+      if (p.fetch < p.start) p.fetch = p.start;
+      if (p.fetch < lesbarBis(p) && !(p.entries[p.fetch].sichtbarAb > S.t)) { c.batch.push({ p: p.i, off: p.fetch }); p.fetch++; n--; neu++; weiter = true; }
+    }
+  }
+  if (neu) {
+    if (!c.batch.length || c.batch.length === neu) c.pollT = S.t;
+    if (cc.commit === 'auto') for (const p of parts) p.committed = Math.max(p.committed, p.fetch);
+  }
+}
+
+function consumerSchritt(c) {
+  if (!c.alive) {
+    if (c.joined && S.t - c.deadAt >= S.sessionMs) { c.joined = false; protokoll('Session-Timeout: ' + c.name + ' gilt als tot', 'bad'); rebalance(); }
+    return;
+  }
+  if (!c.joined) { if (S.t >= c.rejoinAt && c.rejoinAt) { c.joined = true; c.rejoinAt = 0; protokoll(c.name + ' tritt der Gruppe wieder bei'); rebalance(); } return; }
+  if (S.t < c.pauseUntil) return;
+  const cc = S.cc;
+  if (cc.maxPoll && (c.batch.length || c.cur) && S.t - c.pollT > cc.maxPoll) { rauswurf(c); return; }
+  if (c.cur) {
+    if (S.t < c.curEnd) return;
+    const p = S.parts[c.cur.p], e = p.entries[c.cur.off];
+    if (e && !e.lost) {
+      if (e.done > 0) { S.m.duplikate++; e.dup = true; } else S.m.verarbeitet++;
+      e.done++;
+      c.verarbeitet[p.i] = Math.max(c.verarbeitet[p.i] || 0, e.off + 1);
+    }
+    c.cur = null;
+  }
+  if (cc.commit === 'auto' ? c.batch.length < 3 : !c.batch.length) {
+    if (cc.commit === 'nach') commitVerarbeitet(c);
+    poll(c);
+  }
+  if (!c.batch.length) return;
+  const r = c.batch.shift();
+  const e = S.parts[r.p].entries[r.off];
+  if (!e) return;
+  c.cur = r; c.curEnd = S.t + cc.proc; c.zuletzt = e.farbe;
+  paket_('tape-cons', r.p, c, e.farbe, 1, S.gross ? 500 : Math.min(220, cc.proc * 2), r.off);
+}
+
+// ---------------------------------------------------------------- Retention
+function retentionSchritt() {
+  if (S.retention === Infinity) return;
+  const grenze = S.t - S.retention;
+  for (const p of S.parts) {
+    let n = 0;
+    while (p.start < leo(p) && p.entries[p.start].t < grenze) {
+      const e = p.entries[p.start];
+      if (!e.done) { e.lost = true; n++; }
+      e.deleted = true; p.start++;
+    }
+    if (n) { S.m.verloren += n; p.flash = { text: '−' + n + ' gelöscht, nie gelesen', bis: S.t + 3000, bad: true }; if (!p.retWarn || S.t - p.retWarn > 5000) { p.retWarn = S.t; protokoll('P' + p.i + ': Retention löscht ungelesene Nachrichten', 'bad'); } }
+    if (p.fetch < p.start) p.fetch = p.start;
+    if (p.committed < p.start) p.committed = p.start;
+  }
+}
+
+// ---------------------------------------------------------------- Simulationsschritt
+const DT = 10;
+function schritt() {
+  S.t += DT;
+  producerSchritt(DT);
+  if (S.repl) replikationSchritt();
+  retentionSchritt();
+  for (const c of [...S.consumers]) consumerSchritt(c);
+  if (S.t >= S.nextHist) {
+    S.nextHist = S.t + 500;
+    S.hist.push({ t: S.t, prod: S.m.produziert, verb: S.m.verarbeitet + S.m.duplikate, req: S.m.requests, reqMsgs: S.m.reqMsgs });
+    if (S.hist.length > 300) S.hist.shift();
+    S.lagHist.push(lagGesamt()); if (S.lagHist.length > 240) S.lagHist.shift();
+  }
+}
+function lagGesamt() { return S.parts.reduce((s, p) => s + Math.max(0, leo(p) - Math.max(p.committed, p.start)), 0); }
+function rate(feld) {
+  const h = S.hist; if (h.length < 2) return 0;
+  const a = h[Math.max(0, h.length - 5)], b = h[h.length - 1];
+  return b.t > a.t ? (b[feld] - a[feld]) * 1000 / (b.t - a.t) : 0;
+}
+
+// ---------------------------------------------------------------- Kennzahlen
+const KZ = {
+  prod: { l: 'Produziert / s', w: () => fmtRate(rate('prod')) },
+  verb: { l: 'Verarbeitet / s', w: () => fmtRate(rate('verb')) },
+  lag: { l: 'Lag gesamt', w: () => fmt(lagGesamt()), ton: () => lagGesamt() > 150 ? 'warn' : '' },
+  alter: { l: 'Älteste offene', w: () => { const p = S.parts[0]; const o = Math.max(p.committed, p.start); const e = p.entries[o]; return e ? fmt((S.t - e.t) / 1000, 1) + ' s' : '0 s'; },
+    ton: () => { const p = S.parts[0]; const e = p.entries[Math.max(p.committed, p.start)]; return e && S.retention !== Infinity && S.t - e.t > S.retention * 0.7 ? 'schlecht' : ''; } },
+  verloren: { l: 'Verloren', w: () => fmt(S.m.verloren), ton: () => S.m.verloren ? 'schlecht' : 'gut' },
+  duplikate: { l: 'Duplikate', w: () => fmt(S.m.duplikate), ton: () => S.m.duplikate ? 'warn' : '' },
+  fehler: { l: S => S.batching ? 'send()-Fehler' : 'Producer-Fehler', w: () => fmt(S.m.fehler), ton: () => S.m.fehler ? 'schlecht' : 'gut' },
+  retries: { l: 'Wiederholt (Retry)', w: () => fmt(S.m.retries) },
+  rebalances: { l: 'Rebalances', w: () => fmt(S.m.rebalances), ton: () => S.m.rebalances > 3 ? 'schlecht' : '' },
+  requests: { l: 'Requests / s', w: () => fmt(rate('req')), ton: () => rate('req') > 50 ? 'warn' : '' },
+  proRequest: { l: 'Ø Nachr. / Request', w: () => { const r = rate('req'); return r ? fmt(rate('reqMsgs') / r, 1) : '–'; } },
+  queue: { l: 'Request-Queue Broker', w: () => fmt(S.rq.length), ton: () => S.rq.length > 20 ? 'schlecht' : '' },
+  puffer: { l: 'Producer-Puffer', w: () => fmt(100 * S.puffer / S.pufferMax) + ' %', ton: () => S.puffer > S.pufferMax * 0.8 ? 'schlecht' : '' },
+  leer: { l: 'Consumer ohne Partition', w: () => fmt(S.consumers.filter(c => c.alive && c.joined && !c.assigned.length).length), ton: () => S.consumers.some(c => c.joined && !c.assigned.length) ? 'warn' : 'gut' },
+  unterMinIsr: { l: 'Unterrepliziert / offline', w: () => fmt(S.parts.filter(p => isrVon(p).length < 3).length) + ' / ' + fmt(S.parts.filter(p => p.leader < 0).length), ton: () => S.parts.some(p => p.leader < 0) ? 'schlecht' : S.parts.some(p => isrVon(p).length < 3) ? 'warn' : 'gut' },
+};
+function baueKennzahlen() {
+  $('#kennzahlen').innerHTML = def().kennzahlen.map(k => `<div class="kz" id="kz-${k}"><div class="l"></div><div class="w"></div></div>`).join('');
+}
+function zeigeKennzahlen() {
+  for (const k of def().kennzahlen) {
+    const el = document.getElementById('kz-' + k), d = KZ[k];
+    el.querySelector('.l').textContent = typeof d.l === 'function' ? d.l(S) : d.l;
+    el.querySelector('.w').textContent = d.w();
+    el.className = 'kz ' + (d.ton ? d.ton() : '');
+  }
+}
+
+// ---------------------------------------------------------------- Protokoll
+function protokoll(text, art = '') {
+  S.protokoll.unshift({ t: S.t, text, art });
+  if (S.protokoll.length > 40) S.protokoll.pop();
+  $('#protokoll').innerHTML = S.protokoll.map(p => `<div class="${p.art}"><span class="t">${fmt(p.t / 1000, 1)} s</span>${p.text}</div>`).join('');
+}
+
+// ---------------------------------------------------------------- Zeichnen
+const cv = $('#sim'), cx = cv.getContext('2d');
+let G = {}; // Geometrie
+function paket_(art, pi, c, farbe, n, dauer, off) {
+  if (S.pakete.length > 400) return;
+  S.pakete.push({ art, pi, c, farbe, n, t0: S.t, dauer, off });
+}
+function zeilenY(pi) { return G.zeilen[pi]; }
+
+function layout() {
+  const breite = Math.max(760, cv.parentElement.clientWidth);
+  const repl = !!S.repl, bat = !!S.batching;
+  const zh = repl ? (S.gross ? 124 : 78) : (S.gross ? 76 : 46);
+  const nC = S.consumers.length;
+  const hoeheZeilen = S.parts.length * zh;
+  const hoehe = Math.max(hoeheZeilen, nC * 62, S.gross ? 96 : 0) + 40;
+  const dpr = window.devicePixelRatio || 1;
+  if (cv.width !== Math.round(breite * dpr) || cv.height !== Math.round(hoehe * dpr)) {
+    cv.width = Math.round(breite * dpr); cv.height = Math.round(hoehe * dpr); cv.style.height = hoehe + 'px';
+  }
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const oben = 30 + (hoehe - 40 - hoeheZeilen) / 2;
+  G = {
+    breite, hoehe, zh, oben,
+    prodX: 8, prodW: 150,
+    rqX: bat ? 172 : 0, rqW: bat ? 46 : 0,
+    tapeL: bat ? 262 : 214, tapeR: breite - 200,
+    consX: breite - 178, consW: 170,
+    zeilen: S.parts.map((p, i) => oben + i * zh + zh / 2),
+  };
+  G.cw = S.gross ? 36 : 8;
+  const cY0 = 30, cH = hoehe - 40;
+  G.consY = S.consumers.map((c, i) => cY0 + (cH / nC) * (i + 0.5));
+}
+
+function rrect(x, y, w, h, r) { cx.beginPath(); cx.roundRect ? cx.roundRect(x, y, w, h, r) : cx.rect(x, y, w, h); }
+function text(t, x, y, { farbe = farben.fg, groesse = 12, font = 'ui', gewicht = 400, align = 'left', base = 'middle' } = {}) {
+  cx.fillStyle = farbe; cx.font = `${gewicht} ${groesse}px ${farben[font]}`; cx.textAlign = align; cx.textBaseline = base; cx.fillText(t, x, y);
+}
+function alpha(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+
+function zellX(p, o, ende) { return G.tapeL + (ende - 1 - o) * G.cw; }
+
+function zeichneBand(p, y, h, { ende, bisLeo, hohl, hwLinie, gedimmt }) {
+  // Band: neueste Nachricht links (beim Producer), älteste rechts (beim Consumer)
+  const max = Math.floor((G.tapeR - G.tapeL) / G.cw);
+  cx.fillStyle = farben.empty; cx.fillRect(G.tapeL - 2, y - h / 2 - 2, G.tapeR - G.tapeL + 4, h + 4);
+  const von = Math.max(0, ende - max);
+  for (let o = ende - 1; o >= von; o--) {
+    const e = p.entries[o]; const x = zellX(p, o, ende);
+    if (e && e.sichtbarAb > S.t) continue;
+    if (o >= bisLeo) { cx.strokeStyle = farben.muted; cx.setLineDash([2, 2]); cx.strokeRect(x + 1, y - h / 2 + 1, G.cw - 3, h - 2); cx.setLineDash([]); if (S.gross) zellText(o, e, x, y, h, farben.muted); continue; }
+    if (!e) continue;
+    if (e.lost) { cx.fillStyle = farben.bad; cx.fillRect(x, y - h / 2, G.cw - 1, h); if (S.gross) zellText(o, e, x, y, h, '#fff'); continue; }
+    if (o < p.start) continue;
+    let a = 0.92;
+    if (e.done) a = 0.18; else if (o < p.fetch) a = 0.55;
+    if (gedimmt) a *= 0.4;
+    if (hohl && !e.acked) { cx.strokeStyle = e.farbe; cx.lineWidth = 1.5; cx.strokeRect(x + 0.75, y - h / 2 + 0.75, G.cw - 2.5, h - 1.5); cx.lineWidth = 1; if (S.gross) zellText(o, e, x, y, h, farben.fg); continue; }
+    cx.fillStyle = alpha(e.farbe, a); cx.fillRect(x, y - h / 2, G.cw - 1, h);
+    if (S.gross) zellText(o, e, x, y, h, e.done ? farben.muted : '#fff');
+    if (e.dup) { cx.fillStyle = farben.warn; cx.fillRect(x, y + h / 2 - 3, G.cw - 1, 3); }
+  }
+  if (hwLinie != null && hwLinie < ende) {
+    const x = zellX(p, hwLinie, ende) + G.cw - 0.5;
+    if (x >= G.tapeL) { cx.strokeStyle = farben.fg; cx.setLineDash([3, 2]); cx.beginPath(); cx.moveTo(x, y - h / 2 - 4); cx.lineTo(x, y + h / 2 + 4); cx.stroke(); cx.setLineDash([]); }
+  }
+  if (ende > max) text('… Offset ' + fmt(von), G.tapeR + 4, y, { farbe: farben.muted, groesse: 10, font: 'mono' });
+}
+
+function zellText(o, e, x, y, h, farbe) {
+  const mx = x + (G.cw - 1) / 2;
+  if (h >= 28 && e) {
+    text(String(o), mx, y - 6, { font: 'mono', groesse: 12, gewicht: 600, align: 'center', farbe });
+    text(e.key.slice(2), mx, y + 8, { font: 'mono', groesse: 9, align: 'center', farbe });
+  } else text(String(o), mx, y, { font: 'mono', groesse: 11, gewicht: 600, align: 'center', farbe });
+}
+
+function zeichneCommitMarke(p, y, h, ende) {
+  const o = Math.max(p.committed, p.start);
+  const max = Math.floor((G.tapeR - G.tapeL) / G.cw);
+  let x = zellX(p, o, ende) + G.cw;
+  const draussen = ende - o > max;
+  if (draussen) x = G.tapeR;
+  cx.fillStyle = farben.fg;
+  cx.beginPath(); cx.moveTo(x - 0.5, y + h / 2 + 2); cx.lineTo(x - 5, y + h / 2 + 9); cx.lineTo(x + 4, y + h / 2 + 9); cx.closePath(); cx.fill();
+  const lag = Math.max(0, ende - o);
+  text('Lag ' + fmt(lag) + (draussen ? ' →' : ''), Math.min(x + 6, G.tapeR - 4), y + h / 2 + 9, { groesse: 10, font: 'mono', farbe: lag > 150 ? farben.bad : farben.muted, align: draussen ? 'right' : 'left' });
+}
+
+function zeichne() {
+  layout();
+  const W = G.breite;
+  cx.clearRect(0, 0, W, G.hoehe);
+  // Spaltentitel
+  text('PRODUCER', G.prodX, 12, { groesse: 11, gewicht: 600, farbe: farben.muted, font: 'display' });
+  if (S.batching) text('BROKER-QUEUE', G.rqX - 4, 12, { groesse: 11, gewicht: 600, farbe: farben.muted, font: 'display' });
+  text('TOPIC  ·  neu ←   Partition-Log   → alt', G.tapeL, 12, { groesse: 11, gewicht: 600, farbe: farben.muted, font: 'display' });
+  if (S.consumers.length) text('CONSUMER GROUP', G.consX, 12, { groesse: 11, gewicht: 600, farbe: farben.muted, font: 'display' });
+
+  // Producer-Box
+  const pY = G.oben - 6, pH = S.parts.length * G.zh + 2;
+  rrect(G.prodX, pY, G.prodW, pH, 5); cx.fillStyle = farben.panel; cx.fill(); cx.strokeStyle = farben.teal; cx.lineWidth = 2; cx.stroke(); cx.lineWidth = 1;
+  text('Quelle', G.prodX + 10, pY + 14, { gewicht: 600, groesse: 13 });
+  text(fmtRate(S.rate(S.t)) + ' Nachr./s', G.prodX + 10, pY + 31, { font: 'mono', groesse: 11, farbe: farben.muted });
+  if (S.batching) {
+    const bx = G.prodX + 10, by = pY + pH - 22, bw = G.prodW - 20;
+    cx.fillStyle = farben.empty; cx.fillRect(bx, by, bw, 9);
+    const f = S.puffer / S.pufferMax; cx.fillStyle = f > 0.8 ? farben.bad : farben.teal; cx.fillRect(bx, by, bw * Math.min(1, f), 9);
+    text('buffer.memory', bx, by - 7, { groesse: 10, farbe: farben.muted, font: 'mono' });
+    S.batches.forEach((b, i) => {
+      const y = zeilenY(i); const sx = G.prodX + G.prodW - 58;
+      const n = Math.min(b.msgs.length, S.batching.batchMax);
+      cx.strokeStyle = farben.line; cx.strokeRect(sx, y - 8, 48, 16);
+      cx.fillStyle = alpha(farben.teal, 0.8); cx.fillRect(sx, y - 8, 48 * Math.min(1, n / Math.min(S.batching.batchMax, 12)), 16);
+      text(String(b.msgs.length), sx + 24, y, { font: 'mono', groesse: 10, align: 'center', farbe: farben.fg });
+    });
+    // Broker-Request-Queue
+    const qx = G.rqX, qy = G.oben - 6, qh = pH;
+    cx.strokeStyle = farben.line; cx.strokeRect(qx, qy, G.rqW, qh);
+    const anzahl = S.rq.length + (S.rqCur ? 1 : 0);
+    const fuell = Math.min(1, anzahl / 40);
+    cx.fillStyle = anzahl > 20 ? alpha(farben.bad, 0.75) : alpha(farben.teal, 0.5);
+    cx.fillRect(qx + 1, qy + qh - qh * fuell, G.rqW - 2, qh * fuell);
+    text(String(anzahl), qx + G.rqW / 2, qy + qh + 10, { font: 'mono', groesse: 11, align: 'center' });
+  }
+  if (S.repl && S.retry.length) text('Retry-Queue ' + S.retry.length, G.prodX + 10, pY + 48, { font: 'mono', groesse: 11, farbe: farben.warn });
+  else if (S.gross && S.letzte) {
+    text(S.letzte.key + ' → P' + S.letzte.p, G.prodX + 10, pY + 49, { font: 'mono', groesse: 12, gewicht: 600 });
+    if (S.zeigeHash) text('hash(' + S.letzte.key + ') % ' + S.parts.length + ' = ' + S.letzte.p, G.prodX + 10, pY + 66, { font: 'mono', groesse: 10, farbe: farben.muted });
+  }
+
+  // Partitionen
+  S.parts.forEach((p, i) => {
+    const y = zeilenY(i);
+    if (S.repl) {
+      const hh = S.gross ? 28 : 14, gap = S.gross ? 8 : 5;
+      text('P' + i, G.tapeL - 44, y, { font: 'mono', gewicht: 600, groesse: 13 });
+      if (p.leader < 0) text('offline', G.tapeL - 44, y + 15, { groesse: 10, farbe: farben.bad, gewicht: 600 });
+      const h = hw(p);
+      [0, 1, 2].forEach((b, k) => {
+        const yy = y + (k - 1) * (hh + gap);
+        const tot = !S.broker[b].alive, leader = p.leader === b;
+        text((leader ? '★' : ' ') + 'B' + (b + 1), G.tapeL - 6, yy, { font: 'mono', groesse: 10, align: 'right', farbe: tot ? farben.bad : leader ? farben.teal : farben.muted, gewicht: leader ? 600 : 400 });
+        zeichneBand(p, yy, hh, { ende: leo(p), bisLeo: p.reps[b].leo, hohl: true, hwLinie: leader ? h : null, gedimmt: tot });
+        if (tot) { cx.strokeStyle = farben.bad; cx.beginPath(); cx.moveTo(G.tapeL, yy); cx.lineTo(G.tapeR, yy); cx.stroke(); }
+      });
+      zeichneCommitMarke(p, y + hh + gap, hh, leo(p));
+    } else {
+      text('P' + i, G.tapeL - 30, y, { font: 'mono', gewicht: 600, groesse: 13 });
+      const th = S.gross ? 34 : 22;
+      zeichneBand(p, y, th, { ende: leo(p), bisLeo: leo(p), hwLinie: null });
+      if (p.owner || S.consumers.length) zeichneCommitMarke(p, y, th, leo(p));
+      if (S.gross) text('nächster Offset: ' + leo(p), G.tapeL, y - th / 2 - 9, { font: 'mono', groesse: 10, farbe: farben.muted });
+    }
+    if (p.flash && S.t < p.flash.bis) text(p.flash.text, G.tapeL + 4, y - (S.repl ? 34 : 19), { groesse: 11, gewicht: 600, farbe: p.flash.bad ? farben.bad : farben.good });
+    // Linie zum Besitzer
+    if (p.owner) {
+      const ci = S.consumers.indexOf(p.owner);
+      cx.strokeStyle = alpha(farben.teal, 0.35); cx.beginPath(); cx.moveTo(G.tapeR + 2, y); cx.lineTo(G.consX - 2, G.consY[ci]); cx.stroke();
+    }
+  });
+
+  // Consumer
+  S.consumers.forEach((c, i) => {
+    const y = G.consY[i], h = 52, x = G.consX;
+    const tot = !c.alive, raus = c.alive && !c.joined, leer = c.alive && c.joined && !c.assigned.length;
+    rrect(x, y - h / 2, G.consW, h, 5);
+    cx.fillStyle = tot ? alpha(farben.bad, 0.12) : farben.panel; cx.fill();
+    cx.strokeStyle = tot ? farben.bad : raus ? farben.warn : leer ? farben.line : farben.green; cx.lineWidth = 2; cx.stroke(); cx.lineWidth = 1;
+    text(c.name, x + 10, y - 12, { gewicht: 600, groesse: 13 });
+    let status;
+    if (tot) status = S.consumers[i].joined ? 'abgestürzt · Session läuft ' + fmt(Math.max(0, (S.sessionMs - (S.t - c.deadAt)) / 1000), 1) + ' s' : 'abgestürzt';
+    else if (raus) status = 'nicht in der Gruppe';
+    else if (S.t < c.pauseUntil) status = 'Rebalance …';
+    else if (leer) status = 'ohne Partition – wartet';
+    else if (S.gross && c.cur) status = 'verarbeitet P' + c.cur.p + ' · Offset ' + c.cur.off;
+    else if (S.gross) status = (c.assigned.map(k => 'P' + k).join(' ')) + ' · pollt …';
+    else status = (c.assigned.map(k => 'P' + k).join(' ')) + (c.cur ? ' · arbeitet' : ' · wartet');
+    text(status, x + 10, y + 6, { groesse: 11, farbe: tot ? farben.bad : farben.muted });
+    if (c.cur && c.alive) { cx.fillStyle = c.zuletzt; cx.fillRect(x + G.consW - 22, y - 18, 12, 12); }
+    if (S.gross && c.cur && c.alive) {
+      const f = Math.min(1, 1 - (c.curEnd - S.t) / S.cc.proc);
+      cx.fillStyle = farben.empty; cx.fillRect(x + 10, y + 16, G.consW - 20, 6);
+      cx.fillStyle = farben.green; cx.fillRect(x + 10, y + 16, (G.consW - 20) * f, 6);
+    } else if (S.cc.maxPoll && c.alive && c.joined) {
+      const f = (c.batch.length || c.cur) ? Math.min(1, (S.t - c.pollT) / S.cc.maxPoll) : 0;
+      cx.fillStyle = farben.empty; cx.fillRect(x + 10, y + 16, G.consW - 20, 6);
+      cx.fillStyle = f > 0.8 ? farben.bad : farben.green; cx.fillRect(x + 10, y + 16, (G.consW - 20) * f, 6);
+    } else if (c.batch.length && c.alive) {
+      text('Vorrat ' + c.batch.length, x + G.consW - 10, y + 6, { groesse: 10, font: 'mono', farbe: S.cc.commit === 'auto' ? farben.warn : farben.muted, align: 'right' });
+    }
+  });
+
+  // Pakete
+  S.pakete = S.pakete.filter(k => S.t - k.t0 <= k.dauer);
+  for (const k of S.pakete) {
+    const f = Math.min(1, (S.t - k.t0) / k.dauer);
+    const y = zeilenY(k.pi);
+    let x0, y0, x1, y1;
+    if (k.art === 'prod') { x0 = G.prodX + G.prodW; y0 = y; x1 = G.tapeL - 4; y1 = y; }
+    else if (k.art === 'prod-rq') { x0 = G.prodX + G.prodW; y0 = y; x1 = G.rqX + G.rqW / 2; y1 = G.oben + (S.parts.length * G.zh) / 2; }
+    else if (k.art === 'rq-tape') { x0 = G.rqX + G.rqW; y0 = G.oben + (S.parts.length * G.zh) / 2; x1 = G.tapeL - 4; y1 = y; }
+    else { const p = S.parts[k.pi]; const ci = S.consumers.indexOf(k.c); if (ci < 0) continue; x0 = Math.min(G.tapeR, zellX(p, k.off, leo(p)) + G.cw / 2); y0 = y; x1 = G.consX; y1 = G.consY[ci]; }
+    const r = 3 + Math.sqrt(k.n) * 1.6;
+    cx.fillStyle = k.farbe; cx.beginPath(); cx.arc(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, r, 0, 7); cx.fill();
+  }
+}
+
+function zeichneSpark() {
+  const c = $('#spark'), d = c.getContext('2d'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  d.setTransform(dpr, 0, 0, dpr, 0, 0); d.clearRect(0, 0, w, h);
+  const v = S.lagHist; const max = Math.max(50, ...v);
+  d.strokeStyle = farben.line; d.beginPath(); d.moveTo(0, h - 0.5); d.lineTo(w, h - 0.5); d.moveTo(0, h / 2); d.lineTo(w, h / 2); d.stroke();
+  if (v.length < 2) return;
+  const sx = w / 239;
+  d.beginPath(); d.moveTo(0, h);
+  v.forEach((y, i) => d.lineTo(i * sx, h - (y / max) * (h - 4)));
+  d.lineTo((v.length - 1) * sx, h); d.closePath(); d.fillStyle = alpha(farben.teal, 0.18); d.fill();
+  d.beginPath(); v.forEach((y, i) => i ? d.lineTo(i * sx, h - (y / max) * (h - 4)) : d.moveTo(0, h - (y / max) * (h - 4)));
+  d.strokeStyle = farben.teal; d.lineWidth = 1.6; d.stroke(); d.lineWidth = 1;
+  const lx = (v.length - 1) * sx, ly = h - (v[v.length - 1] / max) * (h - 4);
+  d.fillStyle = farben.teal; d.beginPath(); d.arc(lx, ly, 3, 0, 7); d.fill();
+  $('#spark-max').textContent = 'max ' + fmt(max);
+}
+
+// ---------------------------------------------------------------- Oberfläche
+function baueStufen() {
+  $('#stufen').innerHTML = STUFEN.map((s, i) => (i === 1 ? '<span class="trenner"></span>' : '') + `<button id="stufe-${i}" data-i="${i}" aria-pressed="${i === stufe}"><span class="nr">${i}</span>${s.kurz}</button>`).join('');
+  $('#stufen').onclick = e => { const b = e.target.closest('button'); if (b) waehle(+b.dataset.i, modus, 0); };
+}
+function baueAktionen() {
+  const a = def().aktionen || [];
+  $('#aktionen').innerHTML = a.map(x => `<button class="knopf ${x.klasse || ''}" id="akt-${x.id}">${x.text}</button>`).join('');
+  a.forEach(x => { document.getElementById('akt-' + x.id).onclick = () => { x.tun(); aktualisiereAktionen(); }; });
+}
+function aktualisiereAktionen() {
+  for (const x of def().aktionen || []) {
+    if (!x.an) continue;
+    const b = document.getElementById('akt-' + x.id), an = x.an();
+    b.textContent = an ? x.textAn : x.text; b.classList.toggle('an', an);
+  }
+}
+function baueText() {
+  const s = def();
+  const pr = !!s.prinzip;
+  $('#karte-konfig').hidden = pr;
+  $('#karte-achten').classList.toggle('merke', pr);
+  $('#h-sieht').textContent = pr ? 'Was passiert' : 'Was du siehst';
+  $('#h-achten').textContent = pr ? 'Merksatz' : 'Im Betrieb beobachten';
+  $('#schrittnav').hidden = !pr; $('#modus').hidden = pr;
+  if (pr) {
+    const n = STUFEN[stufe].schritte.length;
+    $('#titel').textContent = 'Schritt ' + (schrittNr + 1) + ' · ' + s.titel;
+    $('#frage').textContent = s.lead;
+    $('#sieht').textContent = s.text;
+    $('#achten').textContent = s.merke;
+    $('#schrittzahl').textContent = (schrittNr + 1) + ' / ' + n;
+    $('#zurueck').disabled = schrittNr === 0;
+    $('#weiter').textContent = schrittNr === n - 1 ? 'Zu Stufe 1 ▶' : 'Weiter ▶';
+    baueLegende(schrittNr === 7, false);
+    return;
+  }
+  $('#titel').textContent = stufe + ' · ' + s.titel;
+  $('#frage').textContent = s.frage;
+  const sA = modus === 'schlecht' ? ' aktiv' : '', gA = modus === 'gut' ? ' aktiv' : '';
+  $('#konfig').innerHTML = `<tr><th>Einstellung</th><th class="s${sA}">schlecht</th><th class="g${gA}">gut</th></tr>` +
+    s.konfig.map(([k, a, b]) => `<tr><td class="p">${k}</td><td class="${a !== b && a !== 'gleich' && b !== 'gleich' ? 's' : ''}${sA}">${a}</td><td class="${a !== b && b !== 'gleich' ? 'g' : ''}${gA}">${b}</td></tr>`).join('');
+  $('#sieht').textContent = s.sieht[modus];
+  $('#achten').textContent = s.achten;
+  baueLegende(stufe === 4, stufe >= 5);
+}
+function baueLegende(repl, dup) {
+  const leg = [
+    ['var(--teal)', 'ungelesen (Farbe = Schlüssel)'], ['color-mix(in srgb, var(--teal) 50%, var(--panel))', 'geholt, in Arbeit'],
+    ['color-mix(in srgb, var(--teal) 18%, var(--panel))', 'verarbeitet'], ['var(--bad)', 'verloren'], ['var(--fg)', '▲ committeter Offset'],
+  ];
+  if (repl) leg.push(['transparent; border:1.5px solid var(--teal)', 'noch nicht bestätigt'], ['transparent; border:1px dashed var(--muted)', 'Follower fehlt noch']);
+  if (dup) leg.push(['var(--warn)', 'Duplikat (Strich unten)']);
+  $('#legende').innerHTML = leg.map(([f, t]) => `<span><i style="background:${f}"></i>${t}</span>`).join('');
+}
+function waehle(i, m, s = schrittNr) {
+  stufe = i; modus = m; schrittNr = STUFEN[i].prinzip ? Math.max(0, Math.min(s, STUFEN[i].schritte.length - 1)) : 0;
+  document.querySelectorAll('#stufen button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.i === i)));
+  $('#m-schlecht').setAttribute('aria-pressed', String(m === 'schlecht'));
+  $('#m-gut').setAttribute('aria-pressed', String(m === 'gut'));
+  def().init(m);
+  zuweisen();
+  $('#protokoll').innerHTML = '';
+  if (STUFEN[i].prinzip) protokoll('Prinzip, Schritt ' + (schrittNr + 1) + ': ' + def().titel);
+  else protokoll('Start: Stufe ' + i + ', Konfiguration ' + m, m === 'gut' ? 'good' : 'bad');
+  baueKennzahlen(); baueAktionen(); baueText(); aktualisiereAktionen();
+  try { localStorage.setItem('kafka-fluss-2', JSON.stringify({ i, m, s: schrittNr })); } catch (e) { }
+}
+
+$('#m-schlecht').onclick = () => waehle(stufe, 'schlecht');
+$('#m-gut').onclick = () => waehle(stufe, 'gut');
+$('#neu').onclick = () => waehle(stufe, modus);
+function schrittWechsel(d) {
+  if (!STUFEN[stufe].prinzip) return;
+  const n = STUFEN[stufe].schritte.length;
+  if (schrittNr + d >= n) waehle(1, 'schlecht', 0);
+  else if (schrittNr + d >= 0) waehle(stufe, modus, schrittNr + d);
+}
+$('#zurueck').onclick = () => schrittWechsel(-1);
+$('#weiter').onclick = () => schrittWechsel(1);
+$('#pause').onclick = () => { laeuft = !laeuft; $('#pause').textContent = laeuft ? '⏸ Pause' : '▶ Weiter'; };
+function setzeTempo(k) {
+  tempo = TEMPI[k]; $('#tempo').value = k; $('#tempo-w').textContent = String(tempo).replace('.', ',') + '×';
+  try { localStorage.setItem('kafka-fluss-tempo', String(k)); } catch (e) { }
+}
+$('#tempo').oninput = e => setzeTempo(+e.target.value);
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+  if (e.key >= '0' && e.key <= '6') waehle(+e.key, modus, 0);
+  else if (e.key === 'ArrowRight' && STUFEN[stufe].prinzip) { e.preventDefault(); schrittWechsel(1); }
+  else if (e.key === 'ArrowLeft' && STUFEN[stufe].prinzip) { e.preventDefault(); schrittWechsel(-1); }
+  else if (e.key === 's' || e.key === 'S') waehle(stufe, 'schlecht');
+  else if (e.key === 'g' || e.key === 'G') waehle(stufe, 'gut');
+  else if (e.key === 'r' || e.key === 'R') waehle(stufe, modus);
+  else if (e.key === ' ') { e.preventDefault(); $('#pause').click(); }
+});
+const dunkel = matchMedia('(prefers-color-scheme: dark)');
+dunkel.addEventListener('change', leseFarben);
+new MutationObserver(leseFarben).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+// ---------------------------------------------------------------- Start
+leseFarben();
+baueStufen();
+let gespeichert = null;
+try { gespeichert = JSON.parse(localStorage.getItem('kafka-fluss-2')); } catch (e) { }
+try { const k = +localStorage.getItem('kafka-fluss-tempo'); if (localStorage.getItem('kafka-fluss-tempo') !== null && TEMPI[k]) setzeTempo(k); } catch (e) { }
+waehle(gespeichert && STUFEN[gespeichert.i] ? gespeichert.i : 0, gespeichert && gespeichert.m === 'gut' ? 'gut' : 'schlecht', gespeichert ? gespeichert.s || 0 : 0);
+// Vorlauf in den Stufen, damit die Seite nicht leer startet
+if (!STUFEN[stufe].prinzip) for (let k = 0; k < 600; k++) schritt();
+
+let letzte = performance.now(), rest = 0, naechsteKz = 0;
+function frame(jetzt) {
+  const dt = Math.min(100, jetzt - letzte); letzte = jetzt;
+  if (laeuft) { rest += dt * tempo; while (rest >= DT) { schritt(); rest -= DT; } }
+  zeichne();
+  if (jetzt >= naechsteKz) { naechsteKz = jetzt + 250; zeigeKennzahlen(); zeichneSpark(); aktualisiereAktionen(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+addEventListener('resize', () => zeichne());
+</script>
